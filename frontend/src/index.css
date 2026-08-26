@@ -1,0 +1,534 @@
+/* ==========================================================
+   DESIGN TOKENS
+   Todas as cores, fontes e espaçamentos do sistema partem
+   destas variáveis — trocar a identidade visual do projeto no
+   futuro significa editar só este bloco.
+   ========================================================== */
+:root {
+  /* Cores de fundo */
+  --cor-fundo: #f5f6f8;
+  --cor-superficie: #ffffff;
+  --cor-sidebar: #1b2430;
+  --cor-sidebar-hover: #262f3d;
+
+  /* Cores de texto */
+  --cor-texto: #1b2430;
+  --cor-texto-suave: #6b7280;
+  --cor-texto-claro: #f5f6f8;
+
+  /* Cor de ação principal (verde-petróleo — remete a crescimento/estoque saudável) */
+  --cor-acao: #2f6f5e;
+  --cor-acao-hover: #255a4c;
+
+  /* Cor de alerta (laranja queimado — usada só para estoque baixo/erros) */
+  --cor-alerta: #c7511f;
+  --cor-alerta-fundo: #fdf0ea;
+
+  /* Cor de sucesso (mesma família do verde-ação, mais clara) */
+  --cor-sucesso-fundo: #e8f2ef;
+
+  /* Bordas e divisores */
+  --cor-borda: #e3e5e9;
+
+  /* Tipografia */
+  --fonte-display: "Space Grotesk", sans-serif;
+  --fonte-corpo: "Inter", sans-serif;
+  --fonte-mono: "JetBrains Mono", monospace;
+
+  /* Espaçamento e forma */
+  --raio: 10px;
+  --sombra: 0 1px 3px rgba(27, 36, 48, 0.08);
+}
+
+/* ==========================================================
+   RESET E BASE
+   ========================================================== */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--fonte-corpo);
+  background-color: var(--cor-fundo);
+  color: var(--cor-texto);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--fonte-display);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+button,
+input,
+select {
+  font-family: inherit;
+}
+
+/* Foco visível para navegação por teclado (acessibilidade) */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--cor-acao);
+  outline-offset: 2px;
+}
+
+/* ==========================================================
+   LAYOUT PRINCIPAL (sidebar + conteúdo)
+   ========================================================== */
+.layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+.sidebar {
+  width: 240px;
+  background-color: var(--cor-sidebar);
+  color: var(--cor-texto-claro);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  padding: 24px 16px;
+}
+
+.sidebar__marca {
+  font-family: var(--fonte-display);
+  font-size: 1.15rem;
+  font-weight: 700;
+  padding: 0 8px 28px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.sidebar__marca span {
+  font-family: var(--fonte-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--cor-acao);
+  background: rgba(47, 111, 94, 0.2);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.sidebar__link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: rgba(245, 246, 248, 0.7);
+  text-decoration: none;
+  font-size: 0.92rem;
+  font-weight: 500;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.sidebar__link:hover {
+  background-color: var(--cor-sidebar-hover);
+  color: var(--cor-texto-claro);
+}
+
+.sidebar__link.ativo {
+  background-color: var(--cor-acao);
+  color: #ffffff;
+}
+
+.sidebar__rodape {
+  border-top: 1px solid rgba(245, 246, 248, 0.12);
+  padding-top: 16px;
+  margin-top: 16px;
+}
+
+.sidebar__usuario {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 8px 12px;
+}
+
+.sidebar__usuario-nome {
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.sidebar__usuario-perfil {
+  font-family: var(--fonte-mono);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(245, 246, 248, 0.55);
+}
+
+.sidebar__sair {
+  width: 100%;
+  background: none;
+  border: 1px solid rgba(245, 246, 248, 0.2);
+  color: rgba(245, 246, 248, 0.85);
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 0.86rem;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.sidebar__sair:hover {
+  background-color: var(--cor-sidebar-hover);
+}
+
+.conteudo {
+  flex: 1;
+  padding: 32px 40px;
+  max-width: 1200px;
+}
+
+.pagina__titulo {
+  font-size: 1.6rem;
+  margin-bottom: 4px;
+}
+
+.pagina__subtitulo {
+  color: var(--cor-texto-suave);
+  font-size: 0.95rem;
+  margin-bottom: 28px;
+}
+
+/* ==========================================================
+   COMPONENTES REUTILIZÁVEIS
+   ========================================================== */
+
+/* --- Cartão --- */
+.cartao {
+  background-color: var(--cor-superficie);
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio);
+  box-shadow: var(--sombra);
+  padding: 24px;
+}
+
+/* --- Botões --- */
+.botao {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: background-color 0.15s ease, opacity 0.15s ease;
+}
+
+.botao--primario {
+  background-color: var(--cor-acao);
+  color: #ffffff;
+}
+
+.botao--primario:hover {
+  background-color: var(--cor-acao-hover);
+}
+
+.botao--secundario {
+  background-color: transparent;
+  color: var(--cor-texto);
+  border: 1px solid var(--cor-borda);
+}
+
+.botao--secundario:hover {
+  background-color: var(--cor-fundo);
+}
+
+.botao--perigo {
+  background-color: transparent;
+  color: var(--cor-alerta);
+  border: 1px solid var(--cor-alerta);
+}
+
+.botao--perigo:hover {
+  background-color: var(--cor-alerta-fundo);
+}
+
+.botao:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* --- Formulários --- */
+.campo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.campo label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--cor-texto);
+}
+
+.campo input,
+.campo select,
+.campo textarea {
+  padding: 10px 12px;
+  border: 1px solid var(--cor-borda);
+  border-radius: 8px;
+  font-size: 0.92rem;
+  color: var(--cor-texto);
+  background-color: var(--cor-superficie);
+}
+
+.campo input:focus,
+.campo select:focus,
+.campo textarea:focus {
+  border-color: var(--cor-acao);
+}
+
+/* --- Mensagem de erro --- */
+.mensagem-erro {
+  background-color: var(--cor-alerta-fundo);
+  color: var(--cor-alerta);
+  border: 1px solid rgba(199, 81, 31, 0.25);
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 0.88rem;
+  margin-bottom: 16px;
+}
+
+/* --- Tabelas --- */
+.tabela {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.tabela th {
+  text-align: left;
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--cor-texto-suave);
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--cor-borda);
+}
+
+.tabela td {
+  padding: 14px 12px;
+  border-bottom: 1px solid var(--cor-borda);
+  font-size: 0.9rem;
+}
+
+.tabela tr:last-child td {
+  border-bottom: none;
+}
+
+.codigo-mono {
+  font-family: var(--fonte-mono);
+  font-size: 0.85rem;
+  background-color: var(--cor-fundo);
+  padding: 2px 7px;
+  border-radius: 5px;
+}
+
+/* --- Selo (perfil, status) --- */
+.selo {
+  display: inline-block;
+  font-family: var(--fonte-mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 3px 8px;
+  border-radius: 5px;
+  background-color: var(--cor-fundo);
+  color: var(--cor-texto-suave);
+}
+
+.selo--sucesso {
+  background-color: var(--cor-sucesso-fundo);
+  color: var(--cor-acao);
+}
+
+.selo--alerta {
+  background-color: var(--cor-alerta-fundo);
+  color: var(--cor-alerta);
+}
+
+/* ==========================================================
+   ELEMENTO DE ASSINATURA: MEDIDOR DE ESTOQUE
+   Uma barrinha horizontal que representa visualmente o quanto
+   do "estoque mínimo" está coberto pela quantidade atual —
+   referência literal a um nível de prateleira de armazém.
+   Verde quando saudável, laranja quando abaixo do mínimo.
+   ========================================================== */
+.medidor-estoque {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 140px;
+}
+
+.medidor-estoque__trilho {
+  flex: 1;
+  height: 6px;
+  background-color: var(--cor-borda);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.medidor-estoque__barra {
+  height: 100%;
+  border-radius: 4px;
+  background-color: var(--cor-acao);
+  transition: width 0.25s ease;
+}
+
+.medidor-estoque__barra.abaixo-minimo {
+  background-color: var(--cor-alerta);
+}
+
+.medidor-estoque__valor {
+  font-family: var(--fonte-mono);
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+/* ==========================================================
+   CARTÕES DE RESUMO (DASHBOARD)
+   ========================================================== */
+.resumo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.resumo-cartao {
+  background-color: var(--cor-superficie);
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio);
+  padding: 20px;
+}
+
+.resumo-cartao__rotulo {
+  font-size: 0.8rem;
+  color: var(--cor-texto-suave);
+  margin-bottom: 8px;
+}
+
+.resumo-cartao__valor {
+  font-family: var(--fonte-display);
+  font-size: 2rem;
+  font-weight: 700;
+}
+
+.resumo-cartao__valor.destaque-alerta {
+  color: var(--cor-alerta);
+}
+
+/* ==========================================================
+   TELA DE LOGIN
+   ========================================================== */
+.tela-login {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--cor-sidebar);
+  padding: 20px;
+}
+
+.tela-login__painel {
+  width: 100%;
+  max-width: 380px;
+  background-color: var(--cor-superficie);
+  border-radius: 14px;
+  padding: 36px 32px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
+}
+
+.tela-login__marca {
+  font-family: var(--fonte-display);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--cor-texto-suave);
+  margin-bottom: 24px;
+}
+
+.tela-login__marca span {
+  font-family: var(--fonte-mono);
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: var(--cor-acao);
+  background: var(--cor-sucesso-fundo);
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 2px;
+}
+
+.tela-login__titulo {
+  font-size: 1.4rem;
+  margin-bottom: 6px;
+}
+
+.tela-login__subtitulo {
+  color: var(--cor-texto-suave);
+  font-size: 0.88rem;
+  margin-bottom: 24px;
+  line-height: 1.5;
+}
+
+.tela-login__botao {
+  width: 100%;
+  margin-top: 4px;
+  padding: 12px 18px;
+}
+
+/* ==========================================================
+   RESPONSIVO
+   ========================================================== */
+@media (max-width: 800px) {
+  .layout {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    padding: 12px 16px;
+  }
+
+  .sidebar__nav {
+    flex-direction: row;
+    overflow-x: auto;
+  }
+
+  .sidebar__rodape,
+  .sidebar__usuario {
+    display: none;
+  }
+
+  .conteudo {
+    padding: 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}

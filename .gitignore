@@ -1,0 +1,19 @@
+# ===== Backend (Python) =====
+__pycache__/
+*.pyc
+*.pyo
+.env
+.venv/
+venv/
+*.egg-info/
+
+# ===== Frontend (React) =====
+node_modules/
+frontend/build/
+frontend/dist/
+.env.local
+
+# ===== Editor / SO =====
+.vscode/
+.idea/
+.DS_Store
