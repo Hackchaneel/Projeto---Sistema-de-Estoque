@@ -3,14 +3,15 @@
 ############################################
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
+from jose import JWTError
 
 from app.database.database import get_db
 from app.models.empresa import Empresa
 from app.models.funcionario import Funcionario, PerfilUsuario
-from app.auth.security import gerar_hash_senha
+from app.auth.security import gerar_hash_senha, decodificar_access_token
 from app.auth.dependencies import obter_funcionario_atual, exigir_perfil
 
 
@@ -23,10 +24,6 @@ router = APIRouter(prefix="/funcionarios", tags=["Funcionários"])
 ############################################
 # SCHEMAS (ENTRADA E SAÍDA)
 ############################################
-# Dados necessários para CRIAR um funcionário. Note que recebemos
-# "codigo_empresa" (o código público da empresa, ex: "EMP001"),
-# e não o "empresa_id" interno do banco — isso evita expor o ID
-# numérico interno e mantém a mesma lógica usada no login.
 class FuncionarioCreate(BaseModel):
     codigo_empresa: str
     codigo: str
@@ -36,9 +33,6 @@ class FuncionarioCreate(BaseModel):
     perfil: PerfilUsuario = PerfilUsuario.FUNCIONARIO
 
 
-# Dados para ATUALIZAR um funcionário. Todos os campos são
-# opcionais — só os enviados são alterados. Note que "senha" também
-# é opcional aqui: só é alterada se for explicitamente enviada.
 class FuncionarioUpdate(BaseModel):
     nome: Optional[str] = None
     email: Optional[EmailStr] = None
@@ -47,8 +41,6 @@ class FuncionarioUpdate(BaseModel):
     ativo: Optional[bool] = None
 
 
-# Dados devolvidos pela API. Note que "senha_hash" NUNCA aparece
-# aqui — é um campo sensível que jamais deve ser exposto pela API.
 class FuncionarioResponse(BaseModel):
     id: int
     codigo: str
@@ -63,27 +55,61 @@ class FuncionarioResponse(BaseModel):
 
 
 ############################################
+# FUNÇÃO AUXILIAR: TENTAR IDENTIFICAR QUEM ESTÁ LOGADO (OPCIONAL)
+############################################
+# Diferente de obter_funcionario_atual (que EXIGE login e barra a
+# requisição se não houver token válido), esta função apenas TENTA
+# identificar o funcionário logado, devolvendo None se não houver
+# token, se o token for inválido, ou se o funcionário não existir/
+# estiver inativo. É usada exclusivamente na rota de criação de
+# funcionário, que precisa lidar com dois cenários: alguém já
+# logado cadastrando um colega, OU ninguém logado ainda cadastrando
+# o primeiro administrador de uma empresa nova (ver mais abaixo).
+def _obter_funcionario_opcional(request: Request, db: Session) -> Optional[Funcionario]:
+    cabecalho_auth = request.headers.get("Authorization")
+    if not cabecalho_auth or not cabecalho_auth.startswith("Bearer "):
+        return None
+
+    token = cabecalho_auth.split(" ", 1)[1]
+    try:
+        payload = decodificar_access_token(token)
+    except JWTError:
+        return None
+
+    funcionario_id = payload.get("funcionario_id")
+    if not funcionario_id:
+        return None
+
+    funcionario = db.query(Funcionario).filter(Funcionario.id == funcionario_id).first()
+    if funcionario and funcionario.ativo:
+        return funcionario
+    return None
+
+
+############################################
 # ROTA: CRIAR FUNCIONÁRIO
 ############################################
-# PROTEGIDA: exige estar logado (obter_funcionario_atual) E ter o
-# perfil de ADMINISTRADOR (exigir_perfil). Ou seja, só um
-# administrador já existente pode cadastrar novos funcionários.
+# Esta rota tem uma regra em duas camadas, para resolver o seguinte
+# paradoxo: se SEMPRE exigirmos "só Administrador cadastra", uma
+# empresa recém-criada (sem nenhum funcionário ainda) nunca
+# conseguiria ter seu primeiro administrador — ninguém consegue
+# fazer login para autorizar essa primeira criação.
 #
-# Exceção conhecida: o PRIMEIRO administrador de uma empresa nova
-# ainda precisa ser criado manualmente direto no banco (ou por essa
-# mesma rota usando o token de um administrador de outra empresa,
-# se o sistema permitir múltiplas empresas serem geridas por um
-# super-usuário — isso pode ser refinado mais adiante).
+# Regra aplicada:
+# 1) Se a empresa AINDA NÃO TEM NENHUM funcionário: a criação é
+#    permitida sem exigir login, e o perfil é sempre forçado para
+#    ADMINISTRADOR (ignorando o que foi enviado no campo "perfil"),
+#    já que essa pessoa está fundando o acesso da empresa.
+# 2) Se a empresa JÁ TEM pelo menos um funcionário: a criação exige
+#    estar logado E ser Administrador DAQUELA empresa, como antes.
 @router.post(
     "/", response_model=FuncionarioResponse, status_code=status.HTTP_201_CREATED
 )
 def criar_funcionario(
     dados: FuncionarioCreate,
+    request: Request,
     db: Session = Depends(get_db),
-    funcionario_atual: Funcionario = Depends(obter_funcionario_atual),
-    _: None = Depends(exigir_perfil([PerfilUsuario.ADMINISTRADOR])),
 ):
-
     ########################################
     # 1) BUSCA A EMPRESA PELO CÓDIGO
     ########################################
@@ -97,19 +123,42 @@ def criar_funcionario(
         )
 
     ########################################
-    # 1.1) GARANTE QUE O ADMIN SÓ CADASTRA NA PRÓPRIA EMPRESA
+    # 2) VERIFICA SE É O PRIMEIRO FUNCIONÁRIO (BOOTSTRAP)
     ########################################
-    # Mesmo sendo administrador, ele não pode cadastrar funcionários
-    # em uma empresa diferente da sua — isso é o que garante o
-    # isolamento multiempresa também na escrita, não só na leitura.
-    if empresa.id != funcionario_atual.empresa_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Você só pode cadastrar funcionários na sua própria empresa.",
-        )
+    ja_existe_algum_funcionario = (
+        db.query(Funcionario).filter(Funcionario.empresa_id == empresa.id).first()
+        is not None
+    )
+
+    perfil_a_atribuir = dados.perfil
+
+    if not ja_existe_algum_funcionario:
+        # Ninguém precisa estar logado neste caso — mas o perfil é
+        # sempre Administrador, não importa o que foi enviado.
+        perfil_a_atribuir = PerfilUsuario.ADMINISTRADOR
+    else:
+        # A partir do segundo funcionário em diante, exige login E
+        # perfil Administrador da MESMA empresa.
+        funcionario_atual = _obter_funcionario_opcional(request, db)
+        if funcionario_atual is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Não foi possível validar as credenciais.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        if funcionario_atual.perfil != PerfilUsuario.ADMINISTRADOR:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Você não tem permissão para realizar esta ação.",
+            )
+        if funcionario_atual.empresa_id != empresa.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Você só pode cadastrar funcionários na sua própria empresa.",
+            )
 
     ########################################
-    # 2) VERIFICA DUPLICIDADE DENTRO DA EMPRESA
+    # 3) VERIFICA DUPLICIDADE DENTRO DA EMPRESA
     ########################################
     funcionario_existente = (
         db.query(Funcionario)
@@ -126,7 +175,7 @@ def criar_funcionario(
         )
 
     ########################################
-    # 3) CRIA O FUNCIONÁRIO COM SENHA JÁ EM HASH
+    # 4) CRIA O FUNCIONÁRIO COM SENHA JÁ EM HASH
     ########################################
     novo_funcionario = Funcionario(
         empresa_id=empresa.id,
@@ -134,7 +183,7 @@ def criar_funcionario(
         nome=dados.nome,
         email=dados.email,
         senha_hash=gerar_hash_senha(dados.senha),
-        perfil=dados.perfil,
+        perfil=perfil_a_atribuir,
     )
 
     db.add(novo_funcionario)
@@ -147,10 +196,6 @@ def criar_funcionario(
 ############################################
 # ROTA: LISTAR FUNCIONÁRIOS DA PRÓPRIA EMPRESA
 ############################################
-# PROTEGIDA: exige apenas estar logado (qualquer perfil). A empresa
-# usada no filtro vem do TOKEN do funcionário logado, não de um
-# parâmetro na URL — isso impede que alguém tente listar
-# funcionários de outra empresa só trocando um valor na requisição.
 @router.get("/", response_model=List[FuncionarioResponse])
 def listar_funcionarios(
     db: Session = Depends(get_db),
@@ -188,8 +233,6 @@ def _buscar_funcionario_da_empresa(
 ############################################
 # ROTA: ATUALIZAR FUNCIONÁRIO
 ############################################
-# PROTEGIDA: só Administrador pode editar dados de outros
-# funcionários (nome, email, senha, perfil, status ativo/inativo).
 @router.put("/{funcionario_id}", response_model=FuncionarioResponse)
 def atualizar_funcionario(
     funcionario_id: int,
@@ -202,8 +245,6 @@ def atualizar_funcionario(
 
     dados_para_atualizar = dados.model_dump(exclude_unset=True)
 
-    # Se uma nova senha foi enviada, transforma em hash antes de
-    # salvar — nunca gravamos senha em texto puro.
     if "senha" in dados_para_atualizar:
         senha_nova = dados_para_atualizar.pop("senha")
         if senha_nova:
@@ -220,14 +261,6 @@ def atualizar_funcionario(
 ############################################
 # ROTA: DESATIVAR FUNCIONÁRIO
 ############################################
-# Esta rota NÃO apaga o funcionário do banco — apenas marca
-# "ativo=False". Isso é proposital: o histórico de movimentações de
-# estoque referencia o funcionário que realizou cada ação, e excluir
-# o registro de verdade quebraria essa rastreabilidade (ou exigiria
-# apagar o histórico junto, o que é pior ainda). Um funcionário
-# desativado simplesmente não consegue mais fazer login
-# (verificado em obter_funcionario_atual), mas seu nome continua
-# aparecendo corretamente no histórico.
 @router.delete("/{funcionario_id}", status_code=status.HTTP_204_NO_CONTENT)
 def desativar_funcionario(
     funcionario_id: int,
@@ -237,8 +270,6 @@ def desativar_funcionario(
 ):
     funcionario = _buscar_funcionario_da_empresa(funcionario_id, funcionario_atual, db)
 
-    # Impede que um administrador desative a própria conta (evitaria
-    # a empresa ficar sem nenhum administrador ativo por acidente).
     if funcionario.id == funcionario_atual.id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
